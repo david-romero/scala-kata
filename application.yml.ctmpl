@@ -1,0 +1,44 @@
+server:
+  port: 80
+
+spring:
+  application:
+    name: scala-kata
+  output:
+    ansi:
+      enabled: NEVER
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+    property-naming-strategy: SNAKE_CASE
+  cloud:
+    gcp:
+      core:
+        enabled: {{ key "scala-kata/gcp/enabled" }}
+      logging:
+        enabled: {{ key "scala-kata/gcp/enabled" }}
+      trace:
+        enabled: {{ key "scala-kata/gcp/enabled" }}
+      metrics:
+        enabled: {{ key "scala-kata/gcp/enabled" }}
+  sleuth:
+    enabled: {{ key "scala-kata/gcp/enabled" }}
+
+management:
+  endpoints:
+    enabled-by-default: false
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      enabled: true
+  metrics:
+    export:
+      stackdriver:
+        enabled: {{ key "scala-kata/gcp/enabled" }}
+        step: 1m
+    tags:
+      application: scala-kata
+      docker_container: {{ env "HOSTNAME" }}
+

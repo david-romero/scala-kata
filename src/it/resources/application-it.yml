@@ -1,0 +1,40 @@
+server:
+  port: 8000
+
+spring:
+  application:
+    name: scala-kata
+  output:
+    ansi:
+      enabled: NEVER
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+    property-naming-strategy: SNAKE_CASE
+  cloud:
+    gcp:
+      core:
+        enabled: false
+      logging:
+        enabled: false
+      trace:
+        enabled: false
+      metrics:
+        enabled: false
+  sleuth:
+    enabled: false
+
+management:
+  endpoints:
+    enabled-by-default: false
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      enabled: true
+  metrics:
+    export:
+      stackdriver:
+        enabled: false
+        step: 1m

@@ -1,0 +1,123 @@
+version: 2.1
+
+executors:
+  builder:
+    docker:
+      - image: eu.gcr.io/packlink-tools/packlink-java-11:jdk-latest
+        auth:
+          username: _json_key
+          password: $GCLOUD_GCR_ADMIN_KEY
+  integration_tests_builder:
+    docker:
+      - image: eu.gcr.io/packlink-tools/packlink-java-11:jdk-latest
+        auth:
+          username: _json_key
+          password: $GCLOUD_GCR_ADMIN_KEY
+  publisher:
+    docker:
+      - image: eu.gcr.io/packlink-tools/packlink-docker:0.0.4
+        auth:
+          username: _json_key
+          password: $GCLOUD_GCR_ADMIN_KEY
+
+commands:
+  checkout_cache:
+    steps:
+      - checkout
+      - restore_cache:
+          key: v1-dependencies-{{ checksum "build.sbt" }}-{{ checksum "./project/build.properties" }}-{{ checksum "./project/plugins.sbt" }}-{{ checksum "./project/Dependencies.scala" }}
+  checkin_cache:
+    steps:
+      - save_cache:
+          key: v1-dependencies-{{ checksum "build.sbt" }}-{{ checksum "./project/build.properties" }}-{{ checksum "./project/plugins.sbt" }}-{{ checksum "./project/Dependencies.scala" }}
+          paths:
+            - ../.cache/coursier
+            - ../.sbt/boot
+            - ../.sbt/launchers
+
+jobs:
+  build:
+    executor: integration_tests_builder
+    working_directory: ~/scala-kata
+    steps:
+      - checkout_cache
+      - run:
+          name: Check, test and build
+          command: >-
+            ./sbt
+            clean
+            scalafmtSbtCheck
+            scalafmtCheckAll
+            coverage
+            test
+            it:test
+            coverageOff
+            coverageReport
+            codacyCoverage
+            stage
+      - checkin_cache
+      - persist_to_workspace:
+          root: .
+          paths:
+            - target/universal/stage
+            - Dockerfile
+            - application.yml.ctmpl
+            - init.sh
+  publish:
+    executor: publisher
+    working_directory: ~/scala-kata
+    steps:
+      - attach_workspace:
+          at: .
+      - setup_remote_docker
+      - run:
+          name: Build, login & upload docker image to GCR
+          command: |
+            REF=${CIRCLE_TAG:-$CIRCLE_BRANCH}
+            echo $GCLOUD_GCR_ADMIN_KEY | docker login -u _json_key --password-stdin https://$GCLOUD_GCR_HOSTNAME
+            docker build -t $GCLOUD_GCR_HOSTNAME/$CIRCLE_PROJECT_REPONAME:$REF .
+            docker push $GCLOUD_GCR_HOSTNAME/$CIRCLE_PROJECT_REPONAME:$REF
+  dependency_security_check:
+    executor: builder
+    working_directory: ~/scala-kata
+    steps:
+      - checkout_cache
+      - run:
+          name: Check security assurance on dependency graph
+          command: ./sbt dependencyCheck
+      - store_artifacts:
+          path: ~/scala-kata/target/scala-2.13/dependency-check-report.html
+
+workflows:
+  version: 2
+  scala-kata:
+    jobs:
+      - build:
+          context:
+            - packlink-gcr-download
+          filters:
+            tags:
+              only: /.*/
+      - publish:
+          context:
+            - packlink-gcr-publish
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - /pull\/.*/
+            tags:
+              only: /.*/
+  weekly:
+    triggers:
+      - schedule:
+          cron: "0 0 * * 0"
+          filters:
+            branches:
+              only:
+                - master
+    jobs:
+      - dependency_security_check:
+          context:
+            - packlink-gcr-download
